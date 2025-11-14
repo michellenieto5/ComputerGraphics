@@ -13,24 +13,6 @@
 #endif
 
 
-// For initlist() ---------------------
-#define XSIDE  20.f              // length of the x side of the grid
-#define X0    (-XSIDE/2.f)       // where one side starts
-#define NX     200                // how many points in x
-#define DX    (XSIDE/(float)NX)   // change in x between the points
-#define YFLOOR  (-3.f)
-#define YGRID  (YFLOOR)        // y-height of the grid
-
-#define ZSIDE	20.f		// length of the z side of the grid
-#define Z0      (-ZSIDE/2.)		// where one side starts
-#define NZ	     200 		// how many points in z
-#define DZ	( ZSIDE/(float)NZ )	// change in z between the points
-
-#define WALL_H   6.f            // wall height above the floor
-#define Y0       (YFLOOR)       // wall base sits on the floor
-#define NY       180            // how many points vertically
-#define DY       (WALL_H/(float)NY)
-
 // Ligt 
 int LightMode = 0;  // 0 = point, 1 = spot
 float LightX = 3.0f, LightY = 4.0f, LightZ = 2.0f;
@@ -219,13 +201,10 @@ const int MS_PER_CYCLE = 10000;		// 10000 milliseconds = 10 seconds
 int		ActiveButton;			// current button that is down
 GLuint	AxesList;				// list to hold the axes
 int		AxesOn;					// != 0 means to draw the axes
-GLuint	CircleList;				// object display list
-GLuint Salmon;                 // Salmon object
-GLuint Vase;                 
-GLuint Teapot;    // Teapot object
-GLuint GridDL;       // Walls
-GLuint BackWallDL; 
-GLuint RightWallDL; 
+
+GLuint SphereDL, CubeDL, CylinderDL, ConeDL, TorusDL, Salmon; //DisplayLists
+GLuint SphereTex, CubeTex, CylinderTex, ConeTex, TorusTex, SalmonTex; //Texture Objects
+
 int		DebugOn;				// != 0 means to print debugging info
 int		DepthCueOn;				// != 0 means to use intensity depth cueing
 int		DepthBufferOn;			// != 0 means to use the z-buffer
@@ -268,12 +247,6 @@ void	Visibility( int );
 //menu 
 void DoViewMenu(int);
 
-// --- cake helpers (prototypes) ---
-// void DrawDisk(float r, float y, int slices, bool top);
-// void DrawCylinder(float r, float h, int slices);
-/** void DrawTier(float r, float h, float y, int slices, float icingLip);
-void BeadBorderCyl(float R, float y, int N, float beadR, float beadH, int slices, float cr, float cg, float cb);**/
-
 
 void			Axes( float );
 void			HsvRgb( float[3], float [3] );
@@ -281,6 +254,33 @@ void			Cross(float[3], float[3], float[3]);
 float			Dot(float [3], float [3]);
 float			Unit(float [3], float [3]);
 float			Unit(float [3]);
+
+// Object and texture globals
+
+struct object
+{
+    char* name;       
+    char* file;       
+    int displayList;
+    char key;        
+    unsigned int texObject;  
+};
+
+// Populate an array of the Object struct 
+struct object Objects[ ] =
+{
+    { (char*)"Sphere",   (char*)"/Users/michellevanessapinonieto/Downloads/SampleMac/mars.bmp",   0, '0', 0 },
+    { (char*)"Cube",     (char*)"/Users/michellevanessapinonieto/Downloads/SampleMac/earth.bmp",   0, '1', 0 },
+    { (char*)"Cylinder", (char*)"/Users/michellevanessapinonieto/Downloads/SampleMac/uranus.bmp",    0, '2', 0 },
+    { (char*)"Cone",     (char*)"/Users/michellevanessapinonieto/Downloads/SampleMac/mercury.bmp", 0, '3', 0 },
+    { (char*)"Torus",    (char*)"/Users/michellevanessapinonieto/Downloads/SampleMac/neptune.bmp",  0, '4', 0 },
+    { (char*)"OBJ",      (char*)"/Users/michellevanessapinonieto/Downloads/SampleMac/moon.bmp",   0, '5', 0 },
+};
+
+const int NUMOBJECTS = sizeof(Objects) / sizeof(struct object);
+
+int   NowObject = 0;      // which object is currently displayed
+int   TextureOn = 1;      // 1 = texture on, 0 = no texture
 
 
 // utility to create an array from 3 separate values:
@@ -356,24 +356,14 @@ TimeOfDaySeed( )
 #include "setmaterial.cpp"
 #include "setlight.cpp"
 #include "osusphere.cpp"
-//#include "osucube.cpp"
-//#include "osucylindercone.cpp"
-//#include "osutorus.cpp"
+#include "osucube.cpp"
+#include "osucylindercone.cpp"
+#include "osutorus.cpp"
 #include "bmptotexture.cpp"
 #include "loadobjmtlfiles.cpp"
-#include "keytime.cpp"
-//#include "glslprogram.cpp"
+//#include "keytime.cpp"
+#include "glslprogram.cpp"
 //#include "vertexbufferobject.cpp"
-
-// Keytime Xpositions
-// Camera qualities
-Keytimes EyeX, EyeY, LookY;
-
-// Object #1 (Salmon): 3 quantities
-Keytimes Salmon_Tx, Salmon_Ry, Salmon_S;
-
-// Object #2 (Vase): 3 quantities
-Keytimes Vase_Tz, Vase_Rx, Vase_S;
 
 
 // main program:
@@ -523,15 +513,7 @@ Display( )
 
 	} else { // VIEW_OUTSIDE
 
-    	float eyeX  = EyeX.GetValue(nowSec);
-    	float eyeY  = EyeY.GetValue(nowSec);
-    	float eyeZ  = 6.0f;
-    	float lookX = 0.0f;
-    	float lookY = LookY.GetValue(nowSec);
-   		float lookZ = 0.0f;
-    	gluLookAt(eyeX, eyeY, eyeZ,   lookX, lookY, lookZ,   0.f, 1.f, 0.f);
-
-		//gluLookAt(0.f, 0.f, 6.f,    0.f, 0.0f, 0.f,   0.f, 1.f, 0.f);
+		gluLookAt(0.f, 0.f, 6.f,    0.f, 0.0f, 0.f,   0.f, 1.f, 0.f);
 
 		glRotatef((GLfloat)Yrot, 0.f, 1.f, 0.f);
 		glRotatef((GLfloat)Xrot, 1.f, 0.f, 0.f);
@@ -573,34 +555,23 @@ Display( )
 	float lz = lightRadius * sinf(lightAngle);
 	float ly = 1.f;  
 
-	glDisable(GL_LIGHTING);
-	glColor3f(LightR, LightG, LightB);
-	glPushMatrix();
-		glTranslatef(lx, ly, lz);
-		glutSolidSphere(0.1, 16, 16); 
-	glPopMatrix();
-	glEnable(GL_LIGHTING);
-
-	// --- SET LIGHT ---
-	// ----- PARTY LIGHT COLOR CHANGE -----
-	float t = fmodf(nowSec, 3.0f) / 3.0f;   // 0.0 → 1.0 every 3 seconds
-
-	// Convert that 0–1 range into RGB using sine waves (for smooth color shifts)
-	float r = 0.5f + 0.5f * sinf(2.0f * M_PI * (t + 0.0f));  // Red
-	float g = 0.5f + 0.5f * sinf(2.0f * M_PI * (t + 0.33f)); // Green (offset)
-	float b = 0.5f + 0.5f * sinf(2.0f * M_PI * (t + 0.66f)); // Blue (offset)
-
-	LightR = r;
-	LightG = g;
-	LightB = b;
-
+	// set the light using the animated position
 	if (LightMode == 0) {
 		SetPointLight(GL_LIGHT0, lx, ly, lz, LightR, LightG, LightB);
 	} else {
 		SetSpotLight(GL_LIGHT0, lx, ly, lz,
-					-lx, -ly * 0.5f, -lz,
+					-lx, -ly * 0.5f, -lz,  
 					LightR, LightG, LightB);
 	}
+
+	    // --- TEXTURE MODE ---
+    if (TextureOn)
+        glEnable(GL_TEXTURE_2D);
+    else
+        glDisable(GL_TEXTURE_2D);
+
+    glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+
 
 	// since we are using glScalef( ), be sure the normals get unitized:
 
@@ -609,44 +580,18 @@ Display( )
 	glEnable(GL_LIGHT0);
 	glShadeModel(GL_SMOOTH);
 
-
-	SetMaterial(0.6f, 0.8f, 0.6f, 30.f);
-	glCallList(GridDL);  
-
-	glCallList(BackWallDL);
-	glCallList(RightWallDL);
-
-	// --- Salmon (Object #1): Tx, Ry, S ---
-	SetMaterial(0.85f, 0.25f, 0.25f, 8.f);
-	glPushMatrix();
-		glTranslatef( Salmon_Tx.GetValue(nowSec), 0.f, 1.0f ); // animated X
-		glRotatef(   Salmon_Ry.GetValue(nowSec), 0.f, 1.f, 0.f ); // animated Y-rot
-		float s1 = Salmon_S.GetValue(nowSec);
-		glScalef(s1, s1, s1);
-		glCallList(Salmon);
-	glPopMatrix();
-
-	// --- Vase (Object #2): Tz, Rx, S ---
-	SetMaterial(0.2f, 0.9f, 0.9f, 90.f);
-	glPushMatrix();
-		glTranslatef( -1.5f, 0.f, Vase_Tz.GetValue(nowSec) );   // animated Z
-		glRotatef(   Vase_Rx.GetValue(nowSec), 1.f, 0.f, 0.f ); // animated X-rot
-		float s2 = Vase_S.GetValue(nowSec);
-		glScalef(s2, s2, s2);
-		glCallList(Vase);
-	glPopMatrix();
-
-	// Teapot
-	// SetMaterial(0.9f, 0.75f, 0.2f, 40.f);
-	// glPushMatrix();
-	//     glTranslatef( -1.8f, -0.8f, 0.f);
-	//     glScalef(0.6f, 0.6f, 0.6f);
-	//     glCallList(Teapot);
-	// glPopMatrix();
+    // draw the current object at the center
+    glPushMatrix();
+        glTranslatef(0.f, 0.f, 0.f); 
+        glBindTexture(GL_TEXTURE_2D, Objects[NowObject].texObject);
+        glCallList(Objects[NowObject].displayList);
+    glPopMatrix();
 
 
-
+	glDisable(GL_TEXTURE_2D);
 	glDisable(GL_LIGHTING);
+	glDisable(GL_LIGHT0);
+
 
 
 #ifdef DEMO_Z_FIGHTING
@@ -853,32 +798,37 @@ ElapsedSeconds( )
 	return (float)ms / 1000.f;
 }
 
-// Keyframes init
 
-static void InitKeytimes() {
-    // Camera
-    EyeX.Init(); EyeX.AddTimeValue(0.0f,-3.5f); EyeX.AddTimeValue(1.5f,-1.5f); EyeX.AddTimeValue(3.5f,0.0f);
-                 EyeX.AddTimeValue(6.5f, 2.0f); EyeX.AddTimeValue(8.5f, 1.0f); EyeX.AddTimeValue(10.0f,-3.5f);
-    EyeY.Init(); EyeY.AddTimeValue(0.0f, 2.8f); EyeY.AddTimeValue(2.0f, 3.8f); EyeY.AddTimeValue(5.0f,1.8f);
-                 EyeY.AddTimeValue(7.0f, 3.2f); EyeY.AddTimeValue(9.0f, 2.6f); EyeY.AddTimeValue(10.0f, 2.8f);
-    LookY.Init();LookY.AddTimeValue(0.0f, 0.0f); LookY.AddTimeValue(2.0f, 0.5f); LookY.AddTimeValue(5.0f,-0.4f);
-                 LookY.AddTimeValue(7.0f, 0.2f); LookY.AddTimeValue(9.0f, 0.1f); LookY.AddTimeValue(10.0f, 0.0f);
+// Helper function to handle opening the BMP file, generate the texture and the texImage with the texture.
 
-    // Salmon
-    Salmon_Tx.Init(); Salmon_Tx.AddTimeValue(0.0f,-2.0f); Salmon_Tx.AddTimeValue(2.0f,-0.5f); Salmon_Tx.AddTimeValue(4.5f,1.2f);
-                      Salmon_Tx.AddTimeValue(7.5f,2.2f);  Salmon_Tx.AddTimeValue(9.0f, 0.5f); Salmon_Tx.AddTimeValue(10.0f,-2.0f);
-    Salmon_Ry.Init(); Salmon_Ry.AddTimeValue(0.0f,0.0f); Salmon_Ry.AddTimeValue(2.0f,120.0f); Salmon_Ry.AddTimeValue(4.0f,240.0f);
-                      Salmon_Ry.AddTimeValue(6.0f,360.0f); Salmon_Ry.AddTimeValue(8.0f,520.0f); Salmon_Ry.AddTimeValue(10.0f,720.0f);
-    Salmon_S.Init();  Salmon_S.AddTimeValue(0.0f,0.50f); Salmon_S.AddTimeValue(2.0f,0.70f); Salmon_S.AddTimeValue(4.0f,0.95f);
-                      Salmon_S.AddTimeValue(6.5f,0.65f); Salmon_S.AddTimeValue(8.5f,0.80f); Salmon_S.AddTimeValue(10.0f,0.50f);
+static void
+InitTextures()
+{
+    for (int i = 0; i < NUMOBJECTS; i++)
+    {
+        int width, height;
+        char* file = Objects[i].file;
+        unsigned char* texture = BmpToTexture(file, &width, &height);
+        if (texture == NULL)
+        {
+            fprintf(stderr, "Cannot open texture '%s'\n", file);
+            continue;
+        }
+        else
+        {
+            fprintf(stderr, "Opened '%s': width = %d ; height = %d\n", file, width, height);
+        }
 
-    // Vase
-    Vase_Tz.Init();   Vase_Tz.AddTimeValue(0.0f, 2.0f); Vase_Tz.AddTimeValue(2.0f, 0.8f); Vase_Tz.AddTimeValue(4.5f,-0.5f);
-                      Vase_Tz.AddTimeValue(7.0f,-1.8f); Vase_Tz.AddTimeValue(9.0f,-0.3f); Vase_Tz.AddTimeValue(10.0f, 2.0f);
-    Vase_Rx.Init();   Vase_Rx.AddTimeValue(0.0f,0.0f);  Vase_Rx.AddTimeValue(2.0f,150.0f); Vase_Rx.AddTimeValue(5.0f,330.0f);
-                      Vase_Rx.AddTimeValue(7.0f,480.0f); Vase_Rx.AddTimeValue(9.0f,600.0f); Vase_Rx.AddTimeValue(10.0f,720.0f);
-    Vase_S.Init();    Vase_S.AddTimeValue(0.0f,0.40f); Vase_S.AddTimeValue(2.5f,0.55f); Vase_S.AddTimeValue(5.0f,0.80f);
-                      Vase_S.AddTimeValue(7.5f,0.45f); Vase_S.AddTimeValue(9.0f,0.60f); Vase_S.AddTimeValue(10.0f,0.40f);
+        glGenTextures(1, &Objects[i].texObject);
+        glBindTexture(GL_TEXTURE_2D, Objects[i].texObject);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexImage2D(GL_TEXTURE_2D, 0, 3, width, height, 0,
+                     GL_RGB, GL_UNSIGNED_BYTE, texture);
+    }
 }
 
 
@@ -973,8 +923,7 @@ InitGraphics( )
 #endif
 
 	// all other setups go here, such as GLSLProgram and KeyTime setups:
-	InitKeytimes();
-
+	InitTextures();
 }
 
 
@@ -996,93 +945,44 @@ InitLists( )
 
 	// create the object:
 
-	// create the object (a circle)
-
-	CircleList = glGenLists(1);
-	glNewList(CircleList, GL_COMPILE);
-
-		glColor3f(0.95f, 0.70f, 0.78f);
-		float dang = 2.*M_PI/(float)(NUMSEGS-1);
-		float ang = 0.;
-		glBegin(GL_LINE_LOOP);
-			for(int i = 0; i < NUMSEGS; i++)
-			{
-				glVertex3f(RADIUS*cos(ang), 0., RADIUS*sin(ang));
-				ang += dang;
-			}
-		glEnd();
-
-	glEndList();
-
-	GridDL = glGenLists( 1 );
-	glNewList( GridDL, GL_COMPILE );
-			glShadeModel(GL_SMOOTH);
-			glEnable(GL_NORMALIZE); 
-			SetMaterial(0.6f, 0.8f, 0.6f, 80.f); 
-        	glNormal3f( 0., 1., 0. );		// for each floor vertex, pointing straight up
-
-        	for( int i = 0; i < NZ; i++ )
-        	{
-                	glBegin( GL_QUAD_STRIP );
-                	for( int j = 0; j <= NX; j++ )
-                	{
-                        	glVertex3f( X0 + DX*(float)j, YGRID, Z0 + DZ*(float)(i+0) );
-                        	glVertex3f( X0 + DX*(float)j, YGRID, Z0 + DZ*(float)(i+1) );
-                	}
-                	glEnd( );
-        	}
-	glEndList( );
-
-	RightWallDL = glGenLists(1);
-	glNewList(RightWallDL, GL_COMPILE);
-		glShadeModel(GL_SMOOTH);
-		glEnable(GL_NORMALIZE);
-		SetMaterial(0.80f, 0.60f, 0.60f, 80.f);  
-		glNormal3f( 1.f, 0.f, 0.f);  
-		const float xRight = X0; 
-		for (int i = 0; i < NY; ++i) {
-			glBegin(GL_QUAD_STRIP);
-			for (int k = 0; k <= NZ; ++k) { 
-				float z  = Z0 + DZ * (float)k;
-				float y0 = Y0 + DY * (float)i;
-				float y1 = y0 + DY;
-				glVertex3f(xRight, y0, z);
-				glVertex3f(xRight, y1, z);
-			}
-			glEnd();
-		}
-	glEndList();
-
-	BackWallDL = glGenLists(1);
-	glNewList(BackWallDL, GL_COMPILE);
-		glShadeModel(GL_SMOOTH);
-		glEnable(GL_NORMALIZE);
-		SetMaterial(0.60f, 0.60f, 0.80f, 10.f); 
-
-		glNormal3f(0.f, 0.f,  1.f);     
-		const float zBack = Z0; 
-		
-		for (int i = 0; i < NY; ++i) {
-			glBegin(GL_QUAD_STRIP);
-			for (int j = 0; j <= NX; ++j) {  
-				float x  = X0 + DX * (float)j;
-				float y0 = Y0 + DY * (float)i;
-				float y1 = y0 + DY;
-				glVertex3f(x, y0, zBack);
-				glVertex3f(x, y1, zBack);
-			}
-			glEnd();
-		}
-	glEndList();
-
-
-
-
-	// create the 3 objects hehehe
+	// create the 1 object hehehe
 	Salmon = LoadObjMtlFiles ((char*)"/Users/michellevanessapinonieto/Downloads/SampleMac/salmon.obj");
-	Vase = LoadObjMtlFiles ((char*)"/Users/michellevanessapinonieto/Downloads/SampleMac/vase.obj");
-	Teapot = LoadObjMtlFiles ((char*)"/Users/michellevanessapinonieto/Downloads/SampleMac/teapot.obj");
 	
+    for (int i = 0; i < NUMOBJECTS; i++)
+    {
+        Objects[i].displayList = glGenLists(1);
+        glNewList(Objects[i].displayList, GL_COMPILE);
+        glBindTexture(GL_TEXTURE_2D, Objects[i].texObject);
+        SetMaterial(0.9f, 0.9f, 0.9f, 20.f);
+
+        switch (i)
+        {
+        case 0: // Sphere
+            OsuSphere(1.f, 64, 64);
+            break;
+        case 1: // Cube
+            OsuCube(1.f);
+            break;
+        case 2: // Cylinder
+            OsuCylinder(0.5f, 2.f, 64, 32);
+            break;
+        case 3: // Cone
+            OsuCone(1.f, 0.f, 2.f, 64, 32);
+            break;
+        case 4: // Torus
+            OsuTorus(0.25f, 1.f, 64, 64);
+            break;
+        case 5: // Salmon obj
+            glPushMatrix();
+                glScalef(0.5f, 0.5f, 0.5f);
+                glCallList(Salmon);
+            glPopMatrix();
+            break;
+        }
+
+        glEndList();
+    }
+
 
 	// create the axes:
 	AxesList = glGenLists( 1 );
@@ -1192,6 +1092,21 @@ Keyboard( unsigned char c, int x, int y )
 		case 'g': LightR = 0.f; LightG = 1.f; LightB = 0.f; break;
 		case 'c': LightR = 0.f; LightG = 1.f; LightB = 1.f; break;
 		case 'm': LightR = 1.f; LightG = 0.f; LightB = 1.f; break;
+
+		// New cases
+        case '0':
+        case '1':
+        case '2':
+        case '3':
+        case '4':
+        case '5':
+            NowObject = c - '0'; 
+            break;
+
+        case 't':
+        case 'T':
+            TextureOn = !TextureOn;
+            break;
 
 		case 'q':
 		case 'Q':
@@ -1323,6 +1238,10 @@ Reset( )
 	NowColor = YELLOW;
 	NowProjection = PERSP;
 	Xrot = Yrot = 0.;
+
+	//Initialize NowObjkect and textureOn
+	NowObject = 0;
+	TextureOn = 1;
 }
 
 
